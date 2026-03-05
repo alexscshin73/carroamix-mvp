@@ -7,6 +7,8 @@ const withPWA = withPWAInit({
 });
 
 const nextConfig: NextConfig = {
+  turbopack: {},
+
   async redirects() {
     return [
       {
