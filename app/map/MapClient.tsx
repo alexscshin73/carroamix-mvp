@@ -563,13 +563,34 @@ export default function MapClient() {
   const searchPinIcon = useMemo(() => makeSearchPinIcon(), [])
 
   const myDotIcon = useMemo(() => {
-    return L.divIcon({
-      className: '',
-      html: `<div style="width:12px;height:12px;border-radius:999px;background:#111;box-shadow:0 0 0 6px rgba(17,17,17,0.15);transform:translate(-50%,-50%);"></div>`,
-      iconSize: [1, 1],
-      iconAnchor: [0, 0],
-    })
-  }, [])
+  const size = 26
+
+  return L.divIcon({
+    className: '',
+    html: `
+      <div style="
+        width:${size}px;
+        height:${size}px;
+        border-radius:999px;
+        background:rgba(45,95,210,0.15);
+        display:grid;
+        place-items:center;
+        transform:translate(-50%,-50%);
+      ">
+        <div style="
+          width:12px;
+          height:12px;
+          border-radius:999px;
+          background:rgb(45,95,210);
+          box-shadow:0 0 0 6px rgba(45,95,210,0.18);
+        "></div>
+      </div>
+    `,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -12],
+  })
+}, [])
 
   const blueDotIcon = useMemo(() => makeDotIcon(7, 'rgb(45,95,210)'), [])
   const pin14 = useMemo(() => makePinIcon('sm'), [])
