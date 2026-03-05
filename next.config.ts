@@ -1,3 +1,4 @@
+// web/next.config.ts
 import type { NextConfig } from "next";
 import withPWAInit from "next-pwa";
 
