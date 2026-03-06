@@ -126,7 +126,6 @@ function makePricePinIcon(opts: { logoUrl?: string | null; price: number; size: 
   })
 }
 
-// 검색 결과/선택 위치 표시용 “빨간 핀”
 function makeSearchPinIcon() {
   const html = `
     <div style="transform: translate(-50%, -100%);">
@@ -166,7 +165,6 @@ function isSameBbox(a: Bbox | null, b: Bbox, eps = 1e-6) {
   )
 }
 
-/** react-leaflet: 이 컴포넌트가 최초 1회 bbox를 올려줌 */
 function BboxBinder(props: { onBbox: (b: Bbox) => void }) {
   const map = useMap()
   const lastRef = useRef<Bbox | null>(null)
@@ -203,7 +201,6 @@ function BboxBinder(props: { onBbox: (b: Bbox) => void }) {
   return null
 }
 
-/** 현재 위치 버튼(구글/네이버/카카오 스타일) */
 function LocateControl(props: { myPos: LatLng | null }) {
   const map = useMap()
 
@@ -245,12 +242,18 @@ function LocateControl(props: { myPos: LatLng | null }) {
 }
 
 // =====================
-// SEARCH (Google Maps style left panel)
+// SEARCH + STATUS BAR
 // =====================
-function SearchControl(props: { onPickPlace: (p: { name: string; lat: number; lng: number }) => void }) {
+function SearchControl(props: {
+  onPickPlace: (p: { name: string; lat: number; lng: number }) => void
+  zoom: number | null
+  visibleCount: number
+  loading: boolean
+  error: string
+}) {
   const map = useMap()
   const [q, setQ] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [loadingSearch, setLoadingSearch] = useState(false)
   const [err, setErr] = useState('')
   const [items, setItems] = useState<{ display_name: string; lat: string; lon: string; type?: string }[]>([])
   const [open, setOpen] = useState(false)
@@ -262,8 +265,10 @@ function SearchControl(props: { onPickPlace: (p: { name: string; lat: number; ln
       setOpen(false)
       return
     }
-    setLoading(true)
+
+    setLoadingSearch(true)
     setErr('')
+
     try {
       const url =
         `https://nominatim.openstreetmap.org/search?format=json&limit=12&countrycodes=mx&q=` + encodeURIComponent(text)
@@ -284,7 +289,7 @@ function SearchControl(props: { onPickPlace: (p: { name: string; lat: number; ln
       setItems([])
       setOpen(false)
     } finally {
-      setLoading(false)
+      setLoadingSearch(false)
     }
   }
 
@@ -305,95 +310,156 @@ function SearchControl(props: { onPickPlace: (p: { name: string; lat: number; ln
 
   return (
     <>
-      {/* 검색바 */}
-      <div style={{ position: 'absolute', left: 12, top: 12, zIndex: 1200, width: 420, fontFamily: 'ui-sans-serif, system-ui' }}>
+      <div
+        style={{
+          position: 'absolute',
+          left: 12,
+          right: 12,
+          top: 12,
+          zIndex: 1200,
+          display: 'flex',
+          gap: 8,
+          alignItems: 'flex-start',
+          fontFamily: 'ui-sans-serif, system-ui',
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              display: 'flex',
+              gap: 10,
+              alignItems: 'center',
+              background: 'rgba(255,255,255,0.92)',
+              border: '1px solid rgba(0,0,0,0.12)',
+              borderRadius: 18,
+              padding: '10px 12px',
+              boxShadow: '0 10px 24px rgba(0,0,0,0.18)',
+              backdropFilter: 'blur(8px)',
+              minWidth: 0,
+            }}
+          >
+            <div
+              style={{
+                width: 34,
+                height: 34,
+                borderRadius: 12,
+                display: 'grid',
+                placeItems: 'center',
+                fontSize: 18,
+                flexShrink: 0,
+              }}
+            >
+              ☰
+            </div>
+
+            <input
+              value={q}
+              onChange={(e) => {
+                setQ(e.target.value)
+                setErr('')
+              }}
+              onFocus={() => setOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setOpen(false)
+                if (e.key === 'Enter') {
+                  if (items[0]) pick(items[0])
+                }
+              }}
+              placeholder="gasolina / 주소 검색"
+              style={{
+                flex: 1,
+                minWidth: 0,
+                width: '100%',
+                outline: 'none',
+                border: 'none',
+                fontSize: 16,
+                background: 'transparent',
+              }}
+            />
+
+            <button
+              type="button"
+              onClick={() => runSearch(q)}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 14,
+                border: '1px solid rgba(0,0,0,0.10)',
+                background: 'white',
+                boxShadow: '0 6px 14px rgba(0,0,0,0.12)',
+                cursor: 'pointer',
+                fontSize: 18,
+                flexShrink: 0,
+              }}
+              aria-label="검색"
+              title="검색"
+            >
+              🔍
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setQ('')
+                setItems([])
+                setOpen(false)
+              }}
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 14,
+                border: '1px solid rgba(0,0,0,0.10)',
+                background: 'white',
+                boxShadow: '0 6px 14px rgba(0,0,0,0.12)',
+                cursor: 'pointer',
+                fontSize: 18,
+                flexShrink: 0,
+              }}
+              aria-label="닫기"
+              title="닫기"
+            >
+              ✕
+            </button>
+          </div>
+
+          {err ? <div style={{ marginTop: 8, color: 'crimson', fontSize: 12 }}>{err}</div> : null}
+        </div>
+
         <div
           style={{
-            display: 'flex',
-            gap: 10,
-            alignItems: 'center',
+            flexShrink: 0,
+            whiteSpace: 'nowrap',
             background: 'rgba(255,255,255,0.92)',
             border: '1px solid rgba(0,0,0,0.12)',
             borderRadius: 18,
             padding: '10px 12px',
             boxShadow: '0 10px 24px rgba(0,0,0,0.18)',
             backdropFilter: 'blur(8px)',
+            fontSize: 12,
+            lineHeight: 1.45,
+            minWidth: 104,
           }}
         >
-          <div style={{ width: 34, height: 34, borderRadius: 12, display: 'grid', placeItems: 'center', fontSize: 18 }}>☰</div>
-
-          <input
-            value={q}
-            onChange={(e) => {
-              setQ(e.target.value)
-              setErr('')
-            }}
-            onFocus={() => setOpen(true)}
-            onKeyDown={(e) => {
-              if (e.key === 'Escape') setOpen(false)
-              if (e.key === 'Enter') {
-                if (items[0]) pick(items[0])
-              }
-            }}
-            placeholder="gasolina / 주소 검색"
-            style={{ flex: 1, outline: 'none', border: 'none', fontSize: 16, background: 'transparent' }}
-          />
-
-          <button
-            type="button"
-            onClick={() => runSearch(q)}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 14,
-              border: '1px solid rgba(0,0,0,0.10)',
-              background: 'white',
-              boxShadow: '0 6px 14px rgba(0,0,0,0.12)',
-              cursor: 'pointer',
-              fontSize: 18,
-            }}
-            aria-label="검색"
-            title="검색"
-          >
-            🔍
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setQ('')
-              setItems([])
-              setOpen(false)
-            }}
-            style={{
-              width: 40,
-              height: 40,
-              borderRadius: 14,
-              border: '1px solid rgba(0,0,0,0.10)',
-              background: 'white',
-              boxShadow: '0 6px 14px rgba(0,0,0,0.12)',
-              cursor: 'pointer',
-              fontSize: 18,
-            }}
-            aria-label="닫기"
-            title="닫기"
-          >
-            ✕
-          </button>
+          <div>
+            Z: <b>{props.zoom ?? '-'}</b>
+          </div>
+          <div style={{ marginTop: 6 }}>
+            {props.visibleCount}/50
+            {props.loading ? <span style={{ marginLeft: 6, opacity: 0.7 }}>...</span> : null}
+          </div>
+          {props.error ? <div style={{ marginTop: 6, color: 'crimson', whiteSpace: 'normal', maxWidth: 160 }}>{props.error}</div> : null}
         </div>
-
-        {err ? <div style={{ marginTop: 8, color: 'crimson', fontSize: 12 }}>{err}</div> : null}
       </div>
 
-      {/* 좌측 결과 패널 */}
       {open ? (
         <div
           style={{
             position: 'absolute',
             left: 12,
+            right: 12,
             top: 74,
             zIndex: 1150,
-            width: 420,
+            width: 'min(420px, calc(100vw - 24px))',
             maxHeight: '78vh',
             background: 'rgba(255,255,255,0.94)',
             border: '1px solid rgba(0,0,0,0.12)',
@@ -406,14 +472,14 @@ function SearchControl(props: { onPickPlace: (p: { name: string; lat: number; ln
         >
           <div style={{ padding: '12px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontWeight: 900, fontSize: 14 }}>Results</div>
-            <div style={{ fontSize: 12, opacity: 0.7 }}>{loading ? 'cargando...' : `${items.length} items`}</div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>{loadingSearch ? 'cargando...' : `${items.length} items`}</div>
           </div>
 
           <div style={{ borderTop: '1px solid rgba(0,0,0,0.08)' }} />
 
           <div style={{ overflowY: 'auto', maxHeight: 'calc(78vh - 52px)' }}>
             {items.length === 0 ? (
-              <div style={{ padding: '12px 14px', fontSize: 13, opacity: 0.75 }}>{loading ? '검색중...' : '검색 결과 없음'}</div>
+              <div style={{ padding: '12px 14px', fontSize: 13, opacity: 0.75 }}>{loadingSearch ? '검색중...' : '검색 결과 없음'}</div>
             ) : (
               items.map((it, idx) => (
                 <button
@@ -441,13 +507,25 @@ function SearchControl(props: { onPickPlace: (p: { name: string; lat: number; ln
                         display: 'grid',
                         placeItems: 'center',
                         fontWeight: 900,
+                        flexShrink: 0,
                       }}
                     >
                       {idx + 1}
                     </div>
 
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 900, fontSize: 13, color: 'rgb(18,32,103)' }}>{it.display_name.split(',')[0]}</div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontWeight: 900,
+                          fontSize: 13,
+                          color: 'rgb(18,32,103)',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {it.display_name.split(',')[0]}
+                      </div>
                       <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75, lineHeight: 1.35 }}>{it.display_name}</div>
 
                       <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
@@ -558,44 +636,42 @@ export default function MapClient() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
 
-  // 검색으로 찍은 장소(빨간 핀)
   const [selectedPlace, setSelectedPlace] = useState<{ name: string; lat: number; lng: number } | null>(null)
   const searchPinIcon = useMemo(() => makeSearchPinIcon(), [])
 
   const myDotIcon = useMemo(() => {
-  const size = 26
+    const size = 26
 
-  return L.divIcon({
-    className: '',
-    html: `
-      <div style="
-        width:${size}px;
-        height:${size}px;
-        border-radius:999px;
-        background:rgba(45,95,210,0.15);
-        display:grid;
-        place-items:center;
-        transform:translate(-50%,-50%);
-      ">
+    return L.divIcon({
+      className: '',
+      html: `
         <div style="
-          width:12px;
-          height:12px;
+          width:${size}px;
+          height:${size}px;
           border-radius:999px;
-          background:rgb(45,95,210);
-          box-shadow:0 0 0 6px rgba(45,95,210,0.18);
-        "></div>
-      </div>
-    `,
-    iconSize: [size, size],
-    iconAnchor: [size / 2, size / 2],
-    popupAnchor: [0, -12],
-  })
-}, [])
+          background:rgba(45,95,210,0.15);
+          display:grid;
+          place-items:center;
+          transform:translate(-50%,-50%);
+        ">
+          <div style="
+            width:12px;
+            height:12px;
+            border-radius:999px;
+            background:rgb(45,95,210);
+            box-shadow:0 0 0 6px rgba(45,95,210,0.18);
+          "></div>
+        </div>
+      `,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+      popupAnchor: [0, -12],
+    })
+  }, [])
 
   const blueDotIcon = useMemo(() => makeDotIcon(7, 'rgb(45,95,210)'), [])
   const pin14 = useMemo(() => makePinIcon('sm'), [])
 
-  // 1) 캐시/폴백 -> geolocation으로 덮어쓰기
   useEffect(() => {
     let cached: LatLng | null = null
     try {
@@ -625,7 +701,6 @@ export default function MapClient() {
     )
   }, [])
 
-  // 2) brands 로드(현재는 안 쓸 수도 있으니 유지)
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -641,7 +716,6 @@ export default function MapClient() {
     }
   }, [])
 
-  // 3) bbox 변화 -> nearby 호출
   useEffect(() => {
     if (!bbox) return
     if (!isUsableBbox(bbox)) return
@@ -695,9 +769,14 @@ export default function MapClient() {
 
         <BboxBinder onBbox={setBbox} />
         <LocateControl myPos={myPos} />
-        <SearchControl onPickPlace={setSelectedPlace} />
+        <SearchControl
+          onPickPlace={setSelectedPlace}
+          zoom={bbox?.zoom ?? null}
+          visibleCount={stations.length}
+          loading={loading}
+          error={error}
+        />
 
-        {/* 검색한 장소 표시(빨간 핀) */}
         {selectedPlace ? (
           <Marker position={[selectedPlace.lat, selectedPlace.lng]} icon={searchPinIcon}>
             <Popup>{selectedPlace.name}</Popup>
@@ -732,31 +811,6 @@ export default function MapClient() {
             })
           : null}
       </MapContainer>
-
-      {/* 디버그 박스 */}
-      <div
-        style={{
-          position: 'fixed',
-          right: 12,
-          top: 12,
-          background: 'white',
-          padding: '10px 12px',
-          borderRadius: 12,
-          boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
-          fontSize: 12,
-          minWidth: 240,
-          zIndex: 9999,
-        }}
-      >
-        <div>
-          줌: <b>{bbox?.zoom ?? '-'}</b>
-        </div>
-        <div style={{ marginTop: 8 }}>
-          표시(최대 50): <b>{stations.length}</b>
-          {loading ? <span style={{ marginLeft: 8, opacity: 0.7 }}>cargando...</span> : null}
-        </div>
-        {error ? <div style={{ marginTop: 6, color: 'crimson' }}>{error}</div> : null}
-      </div>
     </div>
   )
 }
