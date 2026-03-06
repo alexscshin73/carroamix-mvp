@@ -27,6 +27,8 @@ type StationDetail = {
   prices: { producto: string; subproducto: string; precio: number; moneda: string; fetched_at: string }[]
 }
 
+type SelectedStation = NearbyItem | null
+
 const LS_KEY = 'carroamix:last_location'
 const DEFAULT_ZOOM = 15
 const FALLBACK_CENTER: LatLng = { lat: 25.6866, lng: -100.3161 }
@@ -300,10 +302,17 @@ function SearchControl(props: {
 
     props.onPickPlace({ name: it.display_name, lat, lng })
     map.flyTo([lat, lng], Math.max(map.getZoom(), 15), { animate: true, duration: 0.8 })
-    setOpen(true)
+    setOpen(false)
   }
 
   useEffect(() => {
+    const text = q.trim()
+    if (!text) {
+      setItems([])
+      setOpen(false)
+      return
+    }
+
     const t = setTimeout(() => runSearch(q), 350)
     return () => clearTimeout(t)
   }, [q])
@@ -358,11 +367,14 @@ function SearchControl(props: {
                 setQ(e.target.value)
                 setErr('')
               }}
-              onFocus={() => setOpen(true)}
+              onFocus={() => {
+                if (items.length > 0) setOpen(true)
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Escape') setOpen(false)
                 if (e.key === 'Enter') {
                   if (items[0]) pick(items[0])
+                  else runSearch(q)
                 }
               }}
               placeholder="gasolina / 주소 검색"
@@ -457,10 +469,10 @@ function SearchControl(props: {
             position: 'absolute',
             left: 12,
             right: 12,
-            top: 74,
+            top: 122,
             zIndex: 1150,
             width: 'min(420px, calc(100vw - 24px))',
-            maxHeight: '78vh',
+            maxHeight: '70vh',
             background: 'rgba(255,255,255,0.94)',
             border: '1px solid rgba(0,0,0,0.12)',
             borderRadius: 18,
@@ -477,7 +489,7 @@ function SearchControl(props: {
 
           <div style={{ borderTop: '1px solid rgba(0,0,0,0.08)' }} />
 
-          <div style={{ overflowY: 'auto', maxHeight: 'calc(78vh - 52px)' }}>
+          <div style={{ overflowY: 'auto', maxHeight: 'calc(70vh - 52px)' }}>
             {items.length === 0 ? (
               <div style={{ padding: '12px 14px', fontSize: 13, opacity: 0.75 }}>{loadingSearch ? '검색중...' : '검색 결과 없음'}</div>
             ) : (
@@ -558,7 +570,7 @@ function SearchControl(props: {
 }
 
 // =====================
-// POPUP
+// DATA HELPERS
 // =====================
 function pickFuel(prices: StationDetail['prices']) {
   const list = (prices ?? []).map((p) => ({
@@ -574,16 +586,24 @@ function pickFuel(prices: StationDetail['prices']) {
   return { magno, premium, diesel }
 }
 
-function StationPopup(props: { permiso: string; fallbackName: string; fallbackAddress: string }) {
+// =====================
+// BOTTOM SHEET
+// =====================
+function BottomSheetCard(props: {
+  station: NearbyItem
+  brand?: BrandRow
+  onClose: () => void
+}) {
   const [detail, setDetail] = useState<StationDetail | null>(null)
-  const [err, setErr] = useState<string>('')
+  const [err, setErr] = useState('')
 
   useEffect(() => {
     let cancelled = false
+
     ;(async () => {
       try {
         setErr('')
-        const res = await fetch(`/api/stations/by-permiso?permiso=${encodeURIComponent(props.permiso)}`)
+        const res = await fetch(`/api/stations/by-permiso?permiso=${encodeURIComponent(props.station.permiso)}`)
         const data = await res.json()
         if (cancelled) return
         setDetail(data)
@@ -592,34 +612,232 @@ function StationPopup(props: { permiso: string; fallbackName: string; fallbackAd
         setErr(e?.message ?? String(e))
       }
     })()
+
     return () => {
       cancelled = true
     }
-  }, [props.permiso])
+  }, [props.station.permiso])
 
-  const name = detail?.station?.nombre ?? props.fallbackName ?? 'Gasolinera'
-  const addr = detail?.station?.direccion ?? props.fallbackAddress ?? ''
+  const name = detail?.station?.nombre ?? props.station.nombre ?? 'Gasolinera'
+  const addr = detail?.station?.direccion ?? props.station.direccion ?? ''
   const { magno, premium, diesel } = pickFuel(detail?.prices ?? [])
+  const navUrl = `https://www.google.com/maps/search/?api=1&query=${props.station.lat},${props.station.lng}`
 
   return (
-    <div style={{ minWidth: 240, fontFamily: 'ui-sans-serif, system-ui' }}>
-      <div style={{ fontWeight: 900 }}>{name}</div>
-      {addr ? <div style={{ marginTop: 6, fontSize: 12, opacity: 0.85 }}>{addr}</div> : null}
+    <>
+      <div
+        onClick={props.onClose}
+        style={{
+          position: 'fixed',
+          inset: 0,
+          background: 'rgba(0,0,0,0.16)',
+          zIndex: 1990,
+        }}
+      />
 
-      <div style={{ marginTop: 10 }}>
-        Magno: <b>{magno ? magno.precio.toFixed(2) : '--'}</b> {magno ? magno.moneda : 'MXN'}
-      </div>
-      <div style={{ marginTop: 4 }}>
-        Premium: <b>{premium ? premium.precio.toFixed(2) : '--'}</b> {premium ? premium.moneda : 'MXN'}
-      </div>
-      <div style={{ marginTop: 4 }}>
-        Diesel: <b>{diesel ? diesel.precio.toFixed(2) : 'X'}</b> {diesel ? diesel.moneda : ''}
+      <div
+        style={{
+          position: 'fixed',
+          left: 12,
+          right: 12,
+          bottom: 12,
+          zIndex: 2000,
+          borderRadius: 24,
+          background: 'rgba(255,255,255,0.97)',
+          border: '1px solid rgba(0,0,0,0.08)',
+          boxShadow: '0 18px 40px rgba(0,0,0,0.22)',
+          backdropFilter: 'blur(14px)',
+          padding: '14px 14px 16px',
+          fontFamily: 'ui-sans-serif, system-ui',
+          animation: 'sheetUp 220ms ease-out',
+        }}
+      >
+        <div
+          style={{
+            width: 42,
+            height: 5,
+            borderRadius: 999,
+            background: 'rgba(0,0,0,0.14)',
+            margin: '0 auto 12px',
+          }}
+        />
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+          <div
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: 14,
+              background: 'rgba(45,95,210,0.08)',
+              display: 'grid',
+              placeItems: 'center',
+              flexShrink: 0,
+              overflow: 'hidden',
+              border: '1px solid rgba(18,32,103,0.08)',
+            }}
+          >
+            {props.brand?.logo_url ? (
+              <img
+                src={props.brand.logo_url}
+                alt={props.brand.brand_name}
+                style={{ width: 30, height: 30, objectFit: 'contain' }}
+              />
+            ) : (
+              <span style={{ fontSize: 18 }}>⛽</span>
+            )}
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div
+              style={{
+                fontWeight: 900,
+                fontSize: 18,
+                color: 'rgb(18,32,103)',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {name}
+            </div>
+
+            <div style={{ marginTop: 4, fontSize: 12, opacity: 0.72 }}>
+              {props.brand?.brand_name ?? 'Marca desconocida'}
+            </div>
+
+            {addr ? (
+              <div style={{ marginTop: 8, fontSize: 13, lineHeight: 1.4, opacity: 0.8 }}>
+                {addr}
+              </div>
+            ) : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={props.onClose}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 12,
+              border: '1px solid rgba(0,0,0,0.08)',
+              background: 'white',
+              cursor: 'pointer',
+              flexShrink: 0,
+              fontSize: 18,
+            }}
+            aria-label="닫기"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div
+          style={{
+            marginTop: 14,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, 1fr)',
+            gap: 8,
+          }}
+        >
+          <div
+            style={{
+              borderRadius: 16,
+              background: 'rgba(45,95,210,0.06)',
+              padding: '10px 10px',
+            }}
+          >
+            <div style={{ fontSize: 12, opacity: 0.7 }}>Magno</div>
+            <div style={{ marginTop: 6, fontWeight: 900, fontSize: 16 }}>
+              {magno ? magno.precio.toFixed(2) : '--'}
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 16,
+              background: 'rgba(45,95,210,0.06)',
+              padding: '10px 10px',
+            }}
+          >
+            <div style={{ fontSize: 12, opacity: 0.7 }}>Premium</div>
+            <div style={{ marginTop: 6, fontWeight: 900, fontSize: 16 }}>
+              {premium ? premium.precio.toFixed(2) : '--'}
+            </div>
+          </div>
+
+          <div
+            style={{
+              borderRadius: 16,
+              background: 'rgba(45,95,210,0.06)',
+              padding: '10px 10px',
+            }}
+          >
+            <div style={{ fontSize: 12, opacity: 0.7 }}>Diesel</div>
+            <div style={{ marginTop: 6, fontWeight: 900, fontSize: 16 }}>
+              {diesel ? diesel.precio.toFixed(2) : '--'}
+            </div>
+          </div>
+        </div>
+
+        {err ? (
+          <div style={{ marginTop: 10, color: 'crimson', fontSize: 12 }}>
+            {err}
+          </div>
+        ) : null}
+
+        <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
+          <a
+            href={navUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              flex: 1,
+              textAlign: 'center',
+              textDecoration: 'none',
+              padding: '12px 14px',
+              borderRadius: 16,
+              background: 'rgb(45,95,210)',
+              color: 'white',
+              fontWeight: 800,
+            }}
+          >
+            Ir
+          </a>
+
+          <button
+            type="button"
+            onClick={props.onClose}
+            style={{
+              padding: '12px 14px',
+              borderRadius: 16,
+              border: '1px solid rgba(0,0,0,0.08)',
+              background: 'white',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <div style={{ marginTop: 10, fontSize: 11, opacity: 0.55 }}>
+          permiso: {props.station.permiso}
+        </div>
       </div>
 
-      {err ? <div style={{ marginTop: 8, color: 'crimson', fontSize: 12 }}>{err}</div> : null}
-
-      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.7 }}>permiso: {props.permiso}</div>
-    </div>
+      <style jsx global>{`
+        @keyframes sheetUp {
+          from {
+            transform: translateY(18px);
+            opacity: 0;
+          }
+          to {
+            transform: translateY(0);
+            opacity: 1;
+          }
+        }
+      `}</style>
+    </>
   )
 }
 
@@ -637,6 +855,9 @@ export default function MapClient() {
   const [error, setError] = useState<string>('')
 
   const [selectedPlace, setSelectedPlace] = useState<{ name: string; lat: number; lng: number } | null>(null)
+  const [selectedStation, setSelectedStation] = useState<SelectedStation>(null)
+  const [brandFilter, setBrandFilter] = useState<string>('all')
+
   const searchPinIcon = useMemo(() => makeSearchPinIcon(), [])
 
   const myDotIcon = useMemo(() => {
@@ -750,6 +971,11 @@ export default function MapClient() {
     }
   }, [bbox])
 
+  const filteredStations = useMemo(() => {
+    if (brandFilter === 'all') return stations
+    return stations.filter((s) => s.brand_key === brandFilter)
+  }, [stations, brandFilter])
+
   if (!initialView) {
     return (
       <div style={{ position: 'fixed', inset: 0, display: 'grid', placeItems: 'center', fontFamily: 'ui-sans-serif' }}>
@@ -772,10 +998,64 @@ export default function MapClient() {
         <SearchControl
           onPickPlace={setSelectedPlace}
           zoom={bbox?.zoom ?? null}
-          visibleCount={stations.length}
+          visibleCount={filteredStations.length}
           loading={loading}
           error={error}
         />
+
+        <div
+          style={{
+            position: 'absolute',
+            left: 12,
+            right: 12,
+            top: 82,
+            zIndex: 1100,
+            display: 'flex',
+            gap: 8,
+            overflowX: 'auto',
+            paddingBottom: 2,
+            fontFamily: 'ui-sans-serif, system-ui',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setBrandFilter('all')}
+            style={{
+              padding: '8px 12px',
+              borderRadius: 999,
+              border: '1px solid rgba(0,0,0,0.08)',
+              background: brandFilter === 'all' ? 'rgb(45,95,210)' : 'rgba(255,255,255,0.94)',
+              color: brandFilter === 'all' ? 'white' : 'black',
+              fontWeight: 700,
+              whiteSpace: 'nowrap',
+              cursor: 'pointer',
+              flexShrink: 0,
+            }}
+          >
+            Todas
+          </button>
+
+          {Object.values(brands).slice(0, 12).map((b) => (
+            <button
+              key={b.brand_key}
+              type="button"
+              onClick={() => setBrandFilter(b.brand_key)}
+              style={{
+                padding: '8px 12px',
+                borderRadius: 999,
+                border: '1px solid rgba(0,0,0,0.08)',
+                background: brandFilter === b.brand_key ? 'rgb(45,95,210)' : 'rgba(255,255,255,0.94)',
+                color: brandFilter === b.brand_key ? 'white' : 'black',
+                fontWeight: 700,
+                whiteSpace: 'nowrap',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {b.brand_name}
+            </button>
+          ))}
+        </div>
 
         {selectedPlace ? (
           <Marker position={[selectedPlace.lat, selectedPlace.lng]} icon={searchPinIcon}>
@@ -790,7 +1070,7 @@ export default function MapClient() {
         ) : null}
 
         {bbox && isUsableBbox(bbox)
-          ? stations.map((s) => {
+          ? filteredStations.map((s) => {
               const z = bbox.zoom
               const logoUrl = s.brand_key ? brands[s.brand_key]?.logo_url : null
 
@@ -802,15 +1082,26 @@ export default function MapClient() {
               else if (z >= 17) icon = makePricePinIcon({ logoUrl, price: s.magno_precio, size: 'lg', showLogo: true })
 
               return (
-                <Marker key={s.permiso} position={[s.lat, s.lng]} icon={icon}>
-                  <Popup>
-                    <StationPopup permiso={s.permiso} fallbackName={s.nombre ?? ''} fallbackAddress={s.direccion ?? ''} />
-                  </Popup>
-                </Marker>
+                <Marker
+                  key={s.permiso}
+                  position={[s.lat, s.lng]}
+                  icon={icon}
+                  eventHandlers={{
+                    click: () => setSelectedStation(s),
+                  }}
+                />
               )
             })
           : null}
       </MapContainer>
+
+      {selectedStation ? (
+        <BottomSheetCard
+          station={selectedStation}
+          brand={selectedStation.brand_key ? brands[selectedStation.brand_key] : undefined}
+          onClose={() => setSelectedStation(null)}
+        />
+      ) : null}
     </div>
   )
 }
